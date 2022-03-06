@@ -1,0 +1,34 @@
+---
+title: MWE knitr::kable does not escape special character $ correctly in the string data when knitring to html (to PDF is okay)
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r UNESCAPED , eval=TRUE ,  echo=FALSE , tidy=TRUE, message=FALSE , warning=FALSE , results='asis'}
+
+
+
+library ("knitr")
+library("kableExtra")#not needed but helpful to see the problem
+library("tidyverse")#not needed but helpful to see the problem
+
+data <- data.frame(stringVar=c("$a$","$A_{1 \\times 2}$"))
+#escaping $ shows error message:
+#data <- data.frame(stringVar=c("\$1\$","\$2\$"))
+
+if (knitr::is_html_output())
+{
+ data %>% #mutate_all( stringr::str_replace_all, pattern=fixed("$"), replacement="\\$") %>% 
+ knitr::kable(row.names = TRUE, format = "html" , escape = TRUE)%>% #same effect with escape=FALSE
+    kableExtra::kable_classic()#same effect without kable_styling
+ #last cell is rendered in math mode
+}else{
+ knitr::kable(data, format="latex", longtable=T, booktabs = T, linesep = "", row.names = TRUE, escape = FALSE) %>%
+  kableExtra::kable_classic()
+ #last cell is rendered as expected
+}#end of if
+
+
+```

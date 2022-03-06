@@ -1,0 +1,475 @@
+---
+title: "Introduction to Responsible Machine Learning"
+  ## content also in  "Hitchhiker's Guide to Responsible machine learning"
+subtitle: "With mlr3 and DALEX"
+author: "Przemyslaw Biecek and Anna Kozak"
+date: "07.07.2021"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  warning = FALSE, 
+  message = FALSE)
+```
+
+NS working though the orginal content on 06/03/2022.
+
+
+# Context
+
+This notebook works through the content covered in  https://betaandbit.github.io/RML/. The intension is that is will be an abbreviated notebooks working though and breifly discussing the fitting nonlinear models on COVID data. A number of hands-on-workshops were presented on this content can be found at https://github.com/MI2DataLab/ResponsibleML-UseR2021.
+
+
+# Part 1: setup, data and EDA
+
+## Setup
+
+```{r}
+if(F)
+  install.packages(c("tableone", "DALEX", "ggplot2", "partykit", "mlr3", "pheatmap",
+                     "mlr3learners", "ranger", "mlr3tuning", "paradox"))
+
+library("tableone")
+library("DALEX")
+library("ggplot2")
+library("partykit")
+library("mlr3")
+library("mlr3learners")
+library("ranger")
+library("mlr3tuning")
+library("paradox")
+
+set.seed(1313)
+
+## Downloaded and created a /data/ directory
+## from https://github.com/MI2DataLab/ResponsibleML-UseR2021
+# Training data:
+covid_spring <- read.table("data/covid_spring.csv", sep =";", header = TRUE, stringsAsFactors = TRUE)
+# Validation data:
+covid_summer <- read.table("data/covid_summer.csv", sep =";", header = TRUE, stringsAsFactors = TRUE)
+str(covid_spring)
+
+## Check for missingness
+naniar::vis_miss(covid_spring) ## Good, complete data.
+```
+
+## Explore the data 
+
+Let's start by looking at a table visualization of the data.
+
+```{r}
+library("tableone")
+table1 <- CreateTableOne(vars = colnames(covid_spring)[1:11],
+                         data = covid_spring,
+                         strata = "Death")
+print(table1)
+```
+
+COVID 19 is more fatal the elderly and people with predisposing conditions. Let's see how death is effected by age and paralle heatmap display of the factor levels
+
+```{r}
+ggplot(covid_spring, aes(Age, fill = Death)) +
+  geom_histogram(color = "white") +
+  ggtitle("Histogram of age") + 
+  DALEX::theme_ema() +
+  scale_fill_manual("Death", values = c("grey", "red3")) + 
+  theme(legend.position = "bottom")
+```
+
+
+```{r, warning=FALSE, message=FALSE, fig.width=8, fig.height=12}
+library("pheatmap")
+pheatmap((covid_spring[,3:11] == "Yes") + 0)
+```
+
+Looks good, the data is a complete matrix of mostly discrete factors. The table, histgram, and heatmaps all indicate that there is information contained in the columns with no visual peculiarities.
+
+
+## Transform the data
+
+However, we should stop and think about the model. The usefulness of a model is mostly from accurate out-of-sample predictions. We should not allow in alternative output variables or variables we may not know before the fact to be included in the model. This data could predict for death or hospitialization with or COVID symtoms. We'll take a conservative approach and model predicting death from only demographic and condition information; we remove `Hospitialization` and some symptomatic information as well.
+
+
+```{r}
+covid_spring <- covid_spring[,c(
+  "Gender", "Age", "Cardiovascular.Diseases", "Diabetes",
+  "Neurological.Diseases", "Kidney.Diseases", "Cancer", "Death")]
+covid_summer <- covid_summer[,c(
+  "Gender", "Age", "Cardiovascular.Diseases", "Diabetes",
+  "Neurological.Diseases", "Kidney.Diseases", "Cancer", "Death")]
+```
+
+
+# Part 2: predictive modeling and model performance 
+
+We will think of a predictive model as a function that computes a certain prediction for certain input data. Usually, such a function is built automatically based on the data. But technically the model can be any function defined in any way. The first model will be based on statistics collected by the CDC (CDC stands for Centers for Disease Control and Prevention. You will find a set of useful statistics related to Covid mortality on [this page]({https://tinyurl.com/CDCmortality)) that determine mortality in different age groups.
+
+In many cases, you do not need data to create a model. Just google some information about the problem.
+
+It turns out that CDC has some decent statistics about age-related mortality. These statistics will suffice as a first approximation of our model.
+
+https://www.cdc.gov/coronavirus/2019-ncov/covid-data/investigations-discovery/hospitalization-death-by-age.html
+
+*Lesson 1:* Often you don't need individual data to build a good model.
+
+We will use this CDC information to create an initial model and use it to illustrate model perform. There are many takes on modeling and modeling permformance. To deal with differing interfaces we will use the __DALEX__ package as a consolidated interface to evaluate and explain models.
+
+## Create a model
+
+What is a predictive model? We will think of it as a function that takes a set of numbers as input and returns a single number as the result - the score.
+
+```{r}
+cdc_risk <- function(x, base_risk = 0.00003) {
+  multip <- rep(7900, nrow(x))
+  multip[which(x$Age < 84.5)] <- 2800
+  multip[which(x$Age < 74.5)] <- 1100
+  multip[which(x$Age < 64.5)] <- 400
+  multip[which(x$Age < 49.5)] <- 130
+  multip[which(x$Age < 39.5)] <- 45
+  multip[which(x$Age < 29.5)] <- 15
+  multip[which(x$Age < 17.5)] <- 1
+  multip[which(x$Age < 4.5)]  <- 2
+  multip * base_risk
+}
+x <- data.frame(Age = 25, Hospitalisation = "Yes")
+cdc_risk(x)
+library("DALEX")
+model_cdc <-  DALEX::explain(cdc_risk,
+                   predict_function = function(m, x) m(x),
+                   type  = "classification",
+                   label = "CDC")
+predict(model_cdc, x)
+```
+
+The same function can be written in a slightly more compact form as (now it works on many rows)
+
+```{r}
+cdc_risk <- function(x, base_risk = 0.00003) {
+  bin <- cut(x$Age, c(-Inf, 4.5, 17.5, 29.5, 39.5, 49.5, 64.5, 74.5, 84.5, Inf))
+  relative_risk <- c(2, 1, 15, 45, 130, 400, 1100, 2800, 7900)[as.numeric(bin)] 
+  relative_risk * base_risk
+}
+
+# check it
+x <- data.frame(Age = c(25,45,85))
+cdc_risk(x)
+summary(cdc_risk(covid_spring))
+table(Death = covid_spring$Death, 
+      Prediction.above.005 = cdc_risk(covid_spring) > 0.05)
+```
+
+
+## Wrap the model 
+
+
+In R, we have many tools for creating models. The problem with them is that these tools are created by different people and return results in different structures. So in order to work uniformly with the models we need to package the model in such a way that it has a uniform interface.
+
+Different models have different APIs. 
+
+But you need One API to Rule Them All!
+
+The DALEX library provides a unified architecture to explore and validate models using different analytical methods. 
+
+[More info](http://ema.drwhy.ai/do-it-yourself.html#infoDALEX)
+
+
+## Model performance
+
+The evaluation of the model performance for the classification is based on different measures than for the regression.
+
+For regression, commonly used measures are Mean squared error MSE
+
+$$MSE(f) = \frac{1}{n} \sum_{i}^{n} (f(x_i) - y_i)^2 $$ 
+
+and Rooted mean squared error RMSE
+
+$$RMSE(f) = \sqrt{MSE(f, X, y)} $$ 
+
+For classification, commonly used measures are Accuracy
+
+$$ACC(f) = (TP + TN)/n$$
+
+Precision
+
+$$Prec(f) = TP/(TP + FP)$$ 
+
+and Recall
+
+$$Recall(f) = TP/(TP + FN)$$ 
+
+and F1 score
+
+$$F1(f) = 2\frac{Prec(f)  * Recall(f) }{Prec(f)  + Recall(f)}$$ 
+
+In this problem we are interested in ranking of scores, so we will use the AUC measure (the area under the ROC curve).
+
+There are many measures for evaluating predictive models and they are located in various R packages (`ROCR`, `measures`, `mlr3measures`, etc.). For simplicity, in this example, we use only the AUC measure from the `DALEX` package.
+
+
+
+Pregnancy: Sensitivity and Specificity
+
+http://getthediagnosis.org/diagnosis/Pregnancy.htm
+
+https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+
+For AUC the `cutoff` does not matter. But we set it to get nice precision and F1.
+
+[More info](http://ema.drwhy.ai/modelPerformance.html#modelPerformanceMethodBin)
+
+*Model performance*
+
+Model exploration starts with an assessment of how good is the model.  The `DALEX::model_performance` function calculates a set of the most common measures for the specified model.
+
+
+```{r}
+library("DALEX")
+model_cdc <-  DALEX::explain(cdc_risk,
+                   predict_function = function(m, x) m(x),
+                   type  = "classification",
+                   label = "CDC")
+predict(model_cdc, x)
+model_cdc <-  update_data(model_cdc,
+                   data  = covid_summer[,-8],
+                   y     = covid_summer$Death == "Yes")
+predict(model_cdc, x)
+#library(ROCR)
+mp_cdc <- model_performance(model_cdc, cutoff = 0.1)
+mp_cdc
+```
+
+### ROC
+
+
+Note:  The model is evaluated on the data given in the explainer. Use `DALEX::update_data()` to specify another dataset.
+
+Note:  Explainer knows whether the model is for classification or regression, so it automatically selects the right measures. It can be overridden if needed.
+
+The S3 generic `plot` function draws a graphical summary of the model performance. With the `geom` argument, one can determine the type of chart.
+
+
+[More info](http://ema.drwhy.ai/modelPerformance.html#fig:exampleROC)
+
+```{r}
+plot(mp_cdc, geom = "roc") + DALEX::theme_ema() 
+```
+
+### LIFT
+
+[More info](http://ema.drwhy.ai/modelPerformance.html#fig:examplePRC)
+
+```{r}
+plot(mp_cdc, geom = "lift")
+```
+
+```{r}
+plot(mp_cdc, geom = "boxplot")
+```
+
+
+
+# Part 3: Basics of decision tree and random forest 
+
+
+Usually, we don't know which function is the best for our problem. This is why we want to use data to find/train such function with the use of some automated algorithm.
+
+In the Machine Learning, there are hundreds of algorithms available. Usually, this training boils down to finding parameters for some family of models. One of the most popular families of models is decision trees. Their great advantage is the transparency of their structure.
+
+We will begin building the model by constructing a decision tree. We will stepwise control the complexity of the model.
+
+[More info](https://cran.r-project.org/web/packages/partykit/vignettes/ctree.pdf)
+
+```{r, fig.width=9, fig.height=5}
+library("partykit")
+tree1 <- ctree(Death ~., covid_spring, 
+              control = ctree_control(maxdepth = 1))
+plot(tree1)
+tree2 <- ctree(Death ~., covid_spring, 
+              control = ctree_control(maxdepth = 2))
+plot(tree2)
+tree3 <- ctree(Death ~., covid_spring, 
+              control = ctree_control(maxdepth = 3))
+plot(tree3)
+tree <- ctree(Death ~., covid_spring, 
+              control = ctree_control(alpha = 0.0001))
+plot(tree)
+```
+
+To work with different models uniformly, we will also wrap this one into an explainer.
+
+```{r}
+model_tree <- DALEX::explain(
+  tree,
+  predict_function = function(m, x) predict(m, x, type = "prob")[,2],
+  data = covid_summer[,-8],
+  y = covid_summer$Death == "Yes",
+  type = "classification",
+  label = "Tree",
+  verbose = FALSE)
+```
+
+
+### Test your model
+
+```{r}
+mp_tree <- model_performance(model_tree, cutoff = 0.1)
+mp_tree
+plot(mp_tree, geom = "roc")
+hist(predict(model_tree, covid_summer))
+plot(mp_tree, mp_cdc, geom = "roc")
+```
+
+
+## Plant a forest
+
+Decision trees are models that have low bias but high variance. In 2001, Leo Breiman proposed a new family of models, called a random forest, which averages scores from multiple decision trees trained on bootstrap samples of the data. The whole algorithm is a bit more complex but also very fascinating. You can read about it at https://tinyurl.com/RF2001. Nowadays a very popular, in a sense complementary technique for improving models is boosting, in which you reduce the model load at the expense of variance. This algorithm reduces variance at the expense of bias. Quite often it leads to a better model.
+
+We will train a random forest with the `mlr3` library. The first step is to define the prediction task.
+[More info](https://mlr3book.mlr-org.com/tasks.html)
+
+```{r bagging_tree}
+library("mlr3")
+covid_task <- TaskClassif$new(id = "covid_spring",
+                             backend = covid_spring,
+                             target = "Death",
+                             positive = "Yes")
+covid_task
+```
+
+Now we need to define the family of models in which we want to look for a solution. The random forests is specified by the `classif.ranger"` parameter. To find the best model in this family we use the `train()`.
+
+[More info](https://mlr3book.mlr-org.com/learners.html)
+
+```{r, warning=FALSE, message=FALSE}
+library("mlr3learners")
+library("ranger")
+covid_ranger <- lrn("classif.ranger", predict_type = "prob",
+                num.trees = 25)
+covid_ranger
+covid_ranger$train(covid_task)
+covid_ranger$model
+predict(covid_ranger, covid_summer[1:3,], predict_type = "prob")[,1]
+```
+
+### Test your model
+
+A trained model can be turned into an explainer. Simpler functions can be used to calculate the performance of this model. But using explainers has an advantage that will be seen in all its beauty in just two pages. 
+
+```{r}
+model_ranger <- explain(covid_ranger,
+                        predict_function = function(m,x)
+                          predict(m, x, predict_type = "prob")[,1],
+                        data = covid_summer[,-8],
+                        y = covid_summer$Death == "Yes",
+                        type = "classification",
+                        label = "Ranger",
+                        verbose = FALSE)
+mp_ranger <- model_performance(model_ranger)
+mp_ranger
+plot(mp_ranger, geom = "roc")
+plot(mp_ranger, mp_tree, mp_cdc, geom = "roc")
+```
+
+
+# Part 4: Hyperparameter optimization + Wrap-up 
+
+*Hyperparameter Optimization*
+
+Machine Learning algorithms typically have many hyperparameters that determine how the model is to be trained. For models with high variance, the selection of such hyperparameters has a strong impact on the quality of the final solution. The mlr3tuning package contains procedures to automate the process of finding good hyperparameters.
+
+See: https://mlr3book.mlr-org.com/tuning.html.
+
+To use it, you must specify the space of hyperparameter to search. Not all hyperparameters are worth optimizing. In the example below, we focus on four for the random forest algorithm.
+
+## Automated Hyperparameter Optimisation
+
+For automatic hyperparameter search, it is necessary to specify a few more elements: (1) a stopping criterion, below it is the number of 10 evaluations, (2) a search strategy for the parameter space, below it is a random search, (3) a way to evaluate the performance of the proposed models, below it is the AUC determined by 5-fold cross-validation.
+
+### Define the search space
+
+In order to be able to automatically search for optimal parameters, it is first necessary to specify what is the space of possible hyperparameters.
+
+[More info](https://mlr3book.mlr-org.com/searchspace.html)
+
+```{r}
+library("mlr3tuning")
+library("paradox")
+covid_ranger$param_set
+search_space = ps(
+  num.trees = p_int(lower = 50, upper = 500),
+  max.depth = p_int(lower = 1, upper = 10),
+  mtry = p_int(lower = 1, upper = 7),
+  minprop = p_dbl(lower = 0.01, upper = 0.1),
+  splitrule = p_fct(levels = c("gini", "extratrees"))
+)
+search_space
+```
+
+### Set-up the tuner
+
+Popular searching strategies are `random_search` and `grid_search`.
+Termination is set fo a specific number of evaluations.
+Internal testing is based on 5-fold CV.
+
+[More info](https://mlr3book.mlr-org.com/tuning.html#autotuner)
+
+```{r}
+tuned_ranger = AutoTuner$new(
+  learner    = covid_ranger,
+  resampling = rsmp("cv", folds = 5),
+  measure    = msr("classif.auc"),
+  search_space = search_space,
+  terminator = trm("evals", n_evals = 10),
+  tuner    = tnr("random_search")
+)
+tuned_ranger
+```
+
+### Tune
+
+```{r, results='hide'}
+tuned_ranger$train(covid_task)
+```
+```{r}
+tuned_ranger$tuning_result
+tuned_ranger$predict_newdata(newdata = covid_spring)$prob[1:4,]
+```
+
+### Test your model
+
+```{r}
+model_tuned <-  explain(tuned_ranger,
+                           predict_function = function(m,x)
+                               m$predict_newdata(newdata = x)$prob[,1],
+                           data = covid_summer[,-8],
+                           y = covid_summer$Death == "Yes",
+                           type = "classification",
+                           label = "AutoTune",
+                           verbose = FALSE)
+mp_tuned <- model_performance(model_tuned)
+mp_tuned
+plot(mp_tuned, geom = "roc")
+plot(mp_ranger, mp_tree, mp_cdc, mp_tuned, geom = "roc")
+```
+
+### Sum up
+
+```{r}
+do.call(rbind, 
+        list(cdc   = mp_cdc$measures,
+            tree   = mp_tree$measures,
+            ranger = mp_ranger$measures,
+            tuned  = mp_tuned$measures))
+```
+### Your turn
+
+- Check the AUC for AutoTune model on the `covid_spring` data. 
+- Plot ROC for both `covid_spring` and `covid_summer` data.
+- (extra) In the `DALEX` package you will find `titanic_imputed` dataset. Optimize a tree based model for the Titanic dataset. How good is your model?
+
