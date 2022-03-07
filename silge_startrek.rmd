@@ -1,11 +1,19 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "TidyTuesday, startrek with workflowsets"
+  ## content also in  "Hitchhiker's Guide to Responsible machine learning"
+subtitle: "Followiung Julia Silge's analysis"
+author: "Nicholas Spyrison"
+date: "06 Mar 2022"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
 ---
 
 # Gist
 
-I am using this as an intro to tidymodels and workflowsets. I am following along with Julia Silge's analysis and video post. See https://juliasilge.com/blog/star-trek/ for the blog and video.
+I am using this as an intro to __tidymodels__ and __workflowsets__. I am following along with Julia Silge's analysis and video post. See https://juliasilge.com/blog/star-trek/ for the blog and video.
 
 
 # Setup
@@ -17,13 +25,37 @@ if(F)
 library(tidyverse)
 computer_raw <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-08-17/computer.csv")
 
+naniar::vis_miss(computer_raw)
+
 computer_raw %>%
   distinct(value_id, .keep_all = TRUE) %>%
   count(char_type)
 ```
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
 
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+Which words are more likely to be spoken by a computer vs. by a person?
 
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+```{r}
+library(tidytext)
+library(tidylo)
+
+computer_counts <-
+  computer_raw %>%
+  distinct(value_id, .keep_all = TRUE) %>%
+  unnest_tokens(word, interaction) %>%
+  count(char_type, word, sort = TRUE)
+
+computer_counts %>%
+  bind_log_odds(char_type, word, n) %>%
+  filter(n > 10) %>%
+  group_by(char_type) %>%
+  slice_max(log_odds_weighted, n = 10) %>%
+  ungroup() %>%
+  ggplot(aes(log_odds_weighted,
+    fct_reorder(word, log_odds_weighted),
+    fill = char_type
+  )) +
+  geom_col(alpha = 0.8, show.legend = FALSE) +
+  facet_wrap(vars(char_type), scales = "free_y") +
+  labs(y = NULL)
+```
