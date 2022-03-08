@@ -1,7 +1,6 @@
 ---
-title: "Tree-based model perfromances"
-  ## content also in  "Hitchhiker's Guide to Responsible machine learning"
-subtitle: "Following FIFA as aggregated in cheem app."
+title: "Tree-based model perfromance"
+subtitle: "On aggregated FIFA data (all quantitative)."
 author: "Nicholas Spyrison"
 date: "07 Mar 2022"
 output: 
@@ -13,14 +12,15 @@ output:
 
 ```{r opts_chunk, include=FALSE, echo=FALSE}
 knitr::opts_chunk$set(
-  echo = TRUE, 
+  echo    = TRUE,
   warning = FALSE, 
-  message = FALSE)
+  message = FALSE
+)
 ```
 
 # Gist
 
-I am trying to get more familiar with different types of models get used to there higher-level performance metrics. We are working with the DALEX::fifa (2020 season) data. After aggregation we have 5000 observations of 8 quantitative explanatory vars and will regress wages [Euros]. I'll build a few models and evaluate performance with the unified API provided with __DALEX__
+We implement various __treebased models__, and look used to their higher-level performance metrics. We are working with the DALEX::fifa (2020 season) data. After aggregation we have 5000 observations of 8 _quantitative_ explanatory vars and will _regress_ wages [Euros]. I'll build a few models and evaluate performance with the unified API provided with __DALEX__.
 
 
 # Setup
@@ -38,9 +38,9 @@ require(magrittr)
 ## Checking variable to aggregate
 corrplot::corrplot(cor(.dat_less_ys),
                    method = "circle", ## geom
-                   type = "upper", ## only upper triangle
-                   diag = F, ## remove auto correlation
-                   order = "FPC", ## First principal component
+                   type   = "upper", ## only upper triangle
+                   diag   = F, ## remove auto correlation
+                   order  = "FPC", ## First principal component
                    tl.col = "black", tl.srt = 90, ## Text label color and rotation
                    tl.pos = "td")
 
@@ -64,37 +64,34 @@ dat <- .dat_less_ys %>%
     gk  = (goalkeeping_diving+goalkeeping_positioning+goalkeeping_reflexes+
              goalkeeping_handling+goalkeeping_kicking)/5L
   )
-
 str(dat)
 skimr::skim(dat)
 
+## Let's get in the habit of train/test sets with something simple
 X <- dat ## 9 aspects of the X's
 Y <- DALEX::fifa$wage_eur 
-
-## Let's get in the habit of train/test sets with something simple
 set.seed(20220307)
-idx_test <- sample(1:nrow(X), size = nrow(X)/5)
-X_train <- X[-idx_test, ]
-X_test  <- X[ idx_test, ]
-Y_train <- Y[-idx_test]
-Y_test  <- Y[ idx_test]
+idx_test <- sample(1:nrow(X), size = nrow(X) / 5)
+X_train  <- X[-idx_test, ]
+X_test   <- X[ idx_test, ]
+Y_train  <- Y[-idx_test]
+Y_test   <- Y[ idx_test]
 remove(X, Y)
 ```
 
 
 # Model creation
 
-I reckon we start with defaults and of tree-based method facilitated in cheem. We'll try to standardize hyperparameters to something modest, though keep in mind techniques are different.
+To start we'll set some modest hyperparameters and then fit several of the tree-based models that are compatible with __treeshap__ and __cheem__. While tree-based models all use decision trees, keep in mind that implementations and techniques differ especially when going to gradiant boosting and schochastic gradiant boosting to change the wight of the tree votes.
 
 ```{r}
 ## Set basic hyperparameters
 n_tree <- nrow(X_train) %>% sqrt() %>% round() ## ~63
 mtry   <- ncol(X_train) / 3 %>% round()        ## ~3
-nodesz <- 5 # Ranger: 5 for regression # nrow(X_train) / 500 %>% round()      ## ~8
+nodesz <- 5 # Ranger: 5 for regression
 shrink <- .1
 
-## See basic form for treeshap supported models
-
+## Dependancies
 require(randomForest)
 require(ranger)
 require(gmb)
@@ -104,12 +101,12 @@ require(tictoc)
 ## Model
 tic("randomForest")
 mod_rf <- randomForest::randomForest(
-  x = X_train, y = Y_train, #xtest = X_test, ytest = Y_test,
+  x = X_train, y = Y_train,
   ntree = n_tree, mtry = mtry, nodesize = nodesz)
 toc()
 tic("ranger")
 mod_rng <- ranger::ranger(
-  x = X_train, y = Y_train, #alternatively #Y ~ ., data.frame(Y = Y_train, X_train),
+  x = X_train, y = Y_train,
   num.trees = n_tree, mtry = mtry, min.node.size = nodesz)
 toc()
 tic("gbm")
@@ -125,7 +122,7 @@ mod_xgb <- xgboost::xgboost(
 toc()
 ```
 
-Great we have a battery of models to compare. Let's unify to a common interface and see if we can compare model performance
+Great we have a battery of models to compare. Let's unify to a common interface and see if we can compare model performance.
 
 
 # Model perfromance (train)
@@ -150,21 +147,17 @@ measures_df <- data.frame(
   .X <- if(nms[i] == "xgb") as.matrix(X_train) else X_train
   ## DALEX method
   exp_ls[[i]] <<- DALEX::explain(
-    model            = mod_ls[[i]],
-    #predict_function = predict(),
-    data             = .X,
-    y                = Y_train,
-    type             = "regression",
-    label            = nms[i],
-    verbose          = FALSE
+    model   = mod_ls[[i]],
+    data    = .X,
+    y       = Y_train,
+    type    = "regression",
+    label   = nms[i],
+    verbose = FALSE
   )
   mp_ls[[i]] <<- DALEX::model_performance(exp_ls[[i]], cutoff = 0.05)
   measures_df[i, ] <<- unlist(mp_ls[[i]]$measures)
   
-  # ## cheem unification and model performance
-  # cmp_ls[[i]] <<- cheem:::model_performance_df(mod_ls[[i]], x = X_train)
-  ## cheem:::model_performance_df errors on ranger model; 
-  ## will need to change in package, or atleast try catch.
+  ## Note that cheem:::model_performance_df errors on ranger model; app may need try catch
 })
 names(exp_ls) <- paste0("exp_", nms)
 names(mp_ls)  <- paste0("mp_",  nms)
@@ -175,7 +168,8 @@ plot(mp_ls, geom = "boxplot")
 #plot(mp_ls, geom = "histogram")
 ```
 
-Ok randomForest and ranger are neck and neck. I'm quite surprised to see that gmb and xgb perform relatively poorly, half expected them to always outperfrom RF on non-tiny data, but this doesn't seem to be the case.
+Alright, randomForest and ranger are neck and neck. I'm quite surprised to see that gmb and xgb perform relatively poorly, half expected them to always outperform RF on non-tiny data, but this doesn't seem to be the case.
+
 
 # Model perfromance -- test data
 
@@ -193,7 +187,7 @@ measures_df_test <- data.frame(
   exp_ls_test[[i]] <<- DALEX::explain(
     model   = mod_ls[[i]],
     data    = .X,
-    y       = Y_train,
+    y       = Y_test,
     type    = "regression",
     label   = nms[i],
     verbose = FALSE
@@ -230,6 +224,74 @@ plot(vip_ls)
 Position is concerning, but that aside it seems the random forests used the lower importance variables much more than the gbm, and xgb! I wonder if this is going to hold true in other cases due to the potentially much more complex interactions and number of terms.
 
 
+# Bonus questions
+
+## Does PCA improve performance -- test data
+
+I suspect that modestly hyperparmetered data may see improved performance from PCA space rather than original variable because the components may lead to more informative split points. I would expect these gains to be lost as the hyperparameters are used more liberally. Let's briefly compare.
+
+```{r}
+## PCA space
+pca <- prcomp(dat)
+pca_train <- pca$x[-idx_test, ]
+pca_test  <- pca$x[ idx_test, ]
+
+## Create models
+tic("randomForest")
+mod_rf <- randomForest::randomForest(
+  x = X_train, y = Y_train,
+  ntree = n_tree, mtry = mtry, nodesize = nodesz)
+toc()
+tic("randomForest on PCA")
+mod_rf_pca <- randomForest::randomForest(
+  x = pca_train, y = Y_train,
+  ntree = n_tree, mtry = mtry, nodesize = nodesz)
+toc()
+
+## Init
+mod_ls <- list(mod_rf  = mod_rf,  mod_rf_pca = mod_rf_pca)
+nms    <- substr(names(mod_ls), 5, 99)
+exp_ls <- mp_ls <- list()
+measures_df <- data.frame(
+  matrix(NA, nrow = length(nms), ncol = 4, 
+         dimnames = list(nms, c("mse", "rmse", "r2", "mad")))
+)
+
+## Compare model performance and VIP
+exp_ls_pca <- mp_ls_pca <- vip_ls_pca <- list()
+measures_df_pca <- data.frame(
+  matrix(NA, nrow = length(nms), ncol = 4, 
+         dimnames = list(nms, c("mse", "rmse", "r2", "mad")))
+)
+## For i in 1:length(models):
+.mute <- sapply(seq_along(mod_ls), function(i){
+  .X <- if(nms[i] == "rf_pca") pca_test else X_test
+  exp_ls_pca[[i]] <<- DALEX::explain(
+    model   = mod_ls[[i]],
+    data    = .X,
+    y       = Y_test,
+    type    = "regression",
+    label   = nms[i],
+    verbose = FALSE
+  )
+  mp_ls_pca[[i]] <<- DALEX::model_performance(exp_ls_pca[[i]], cutoff = 0.05)
+  measures_df_pca[i, ] <<- unlist(mp_ls_pca[[i]]$measures)
+  vip_ls_pca[[i]] <<- variable_importance(
+    exp_ls_pca[[i]], loss_function = loss_root_mean_square)
+})
+names(exp_ls_pca) <- paste0("exp_", nms)
+names(mp_ls_pca)  <- paste0("mp_",  nms)
+names(vip_ls_pca)  <- paste0("vip_",  nms)
+
+measures_df_pca
+plot(mp_ls_pca)
+plot(mp_ls_pca, geom = "boxplot")
+plot(vip_ls_pca)
+```
+
+Wow, we see a small loss in performance (on test data), when we first rotate the same data to PCA orientation. This was unexpected. The variable importance may be a little bit more front loaded, but with the added mapping back to the original orientation it's not worth it in this case.
+
+To answer the question directly, not in this case, it lead to small decrease in performance. Do note that this is quantitative regression case.
 
 
 # Session info
@@ -250,7 +312,7 @@ devtools::session_info(pkgs)
 
 # Related content
 
+- https://ema.drwhy.ai/
 - https://dalex.drwhy.ai/#examples
 - https://github.com/MI2DataLab/ResponsibleML-UseR2021
 - https://uc-r.github.io/dalex#procedures
-- https://ema.drwhy.ai/

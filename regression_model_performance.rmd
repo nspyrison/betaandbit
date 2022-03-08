@@ -1,0 +1,234 @@
+---
+title: "Regession model perfromances"
+subtitle: "On aggregated FIFA data (all quantitative)."
+author: "Nicholas Spyrison"
+date: "08 Mar 2022"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+---
+
+```{r opts_chunk, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE, 
+  message = FALSE)
+```
+
+# Gist
+
+I am trying to get more familiar more diverse types of models and their higher-level performance metrics. Specifically I want to look at glm, svm, nativebayes, knn (regression) and random forest. Random forest will be fit as baseline comparison with the tree-based variants. I illustrate with DALEX::fifa (2020 season) data. After aggregation we have 5000 observations of 8 _quantitative_ explanatory vars and will _regress_ wages [Euros]. I'll build a few models and evaluate performance with the unified API provided with __DALEX__.
+
+
+# Setup
+
+```{r}
+require(DALEX)
+require(magrittr)
+
+## Remove a few alternative response variables
+.dat_less_ys <- DALEX::fifa %>%
+  dplyr::select(
+    -c(`nationality`, `overall`, `potential`, `value_eur`, `wage_eur`)) %>%
+  as.data.frame()
+
+## Checking variable to aggregate
+if(F)
+  corrplot::corrplot(cor(.dat_less_ys),
+                     iiimethod = "circle", ## geom
+                     type   = "upper", ## only upper triangle
+                     diag   = F, ## remove auto correlation
+                     order  = "FPC", ## First principal component
+                   tl.col = "black", tl.srt = 90, ## Text label color and rotation
+                   tl.pos = "td")
+
+## Aggregate some highly correlated vars
+dat <- .dat_less_ys %>%
+  dplyr::mutate(
+    .keep = "none",
+    BMI = (weight_kg+(height_cm/100L)^2L)/2L,
+    age = age,
+    react = movement_reactions,
+    off = (attacking_finishing+skill_long_passing+attacking_volleys+
+             power_long_shots+skill_curve+mentality_positioning+attacking_crossing+
+             attacking_short_passing+skill_dribbling+skill_ball_control)/10L,
+    def = (defending_sliding_tackle+mentality_interceptions+
+             defending_standing_tackle+defending_marking+mentality_aggression)/5L,
+    acc = (attacking_heading_accuracy+power_shot_power)/2L,
+    mvm = (movement_sprint_speed+movement_balance+movement_acceleration+
+             mentality_vision+mentality_composure+movement_agility+
+             mentality_penalties+skill_fk_accuracy+power_stamina+movement_reactions)/10L,
+    pwr = (power_strength+power_jumping)/2L,
+    gk  = (goalkeeping_diving+goalkeeping_positioning+goalkeeping_reflexes+
+             goalkeeping_handling+goalkeeping_kicking)/5L
+  )
+str(dat)
+skimr::skim(dat)
+
+## Let's get in the habit of train/test sets with something simple
+X <- dat ## 9 aspects of the X's
+Y <- DALEX::fifa$wage_eur 
+set.seed(20220308)
+idx_test <- sample(1:nrow(X), size = nrow(X) / 5)
+X_train  <- X[-idx_test, ]
+X_test   <- X[ idx_test, ]
+Y_train  <- Y[-idx_test]
+Y_test   <- Y[ idx_test]
+remove(X, Y)
+```
+
+
+# Model creation
+
+I reckon we start with defaults and of tree-based method facilitated in cheem. We'll try to standardize hyperparameters to something modest, though keep in mind techniques are different.
+
+```{r}
+## Model dependencies
+require(e1071)        ## svm(), naiveBayes()
+require(FNN)          ## knn.reg()
+require(randomForest) ## randomForest()
+require(stats)        ## glm()
+require(tictoc)
+
+## Model
+tic("glm")
+mod_glm <- stats::glm(Y ~ ., data.frame(X_train, Y = Y_train), family = gaussian())
+toc()
+tic("svm")
+mod_svm <- e1071::svm(X_train, Y_train, kernel = "linear")
+toc()
+tic("naiveBayes")
+mod_nb  <- e1071::naiveBayes(X_train, Y_train, laplace = 0)
+toc()
+tic("knn.reg")
+mod_knn <- FNN::knn.reg(train = X_train, test = X_test, y = Y_train)
+toc()
+tic("randomForest")
+mod_rf <- randomForest::randomForest(
+  x = X_train, y = Y_train,
+  ntree = 63, mtry = 3, nodesize = 5) ## Same as tree-based comparison
+toc()
+```
+
+Great we have a battery of models to compare. Let's unify to a common interface and see if we can compare model performance
+
+
+# Model perfromance (train)
+
+Keep in mind this is the highest level peak of the model explanation pyramid and evaluated on training data.
+
+```{r}
+## Initialize
+mod_ls <- list(
+  mod_glm = mod_glm, mod_svm = mod_svm, mod_nb = mod_nb, mod_rf = mod_rf)
+  #mod_knn = mod_knn, ## Non-standard use for prediction function...
+nms    <- substr(names(mod_ls), 5, 99)
+exp_ls <- mp_ls <- vip_ls <- list()
+measures_df <- data.frame(
+  matrix(NA, nrow = length(nms), ncol = 4,
+         dimnames = list(nms, c("mse", "rmse", "r2", "mad")))
+)
+
+## For i in 1:length(models):
+.mute <- sapply(seq_along(mod_ls), function(i){
+  ## Unified explain object
+  exp_ls[[i]] <<- DALEX::explain(
+    model   = mod_ls[[i]],
+    data    = X_train,
+    y       = Y_train,
+    type    = "regression",
+    label   = nms[i],
+    verbose = FALSE
+  )
+  ## Model performance
+  mp_ls[[i]] <<- DALEX::model_performance(exp_ls[[i]])
+  measures_df[i, ] <<- unlist(mp_ls[[i]]$measures)
+  ## Variable importance
+  vip_ls[[i]] <<- variable_importance(
+    exp_ls[[i]], loss_function = loss_root_mean_square)
+})
+## Post-loop cleanup
+names(exp_ls) <- paste0("exp_", nms)
+names(mp_ls)  <- paste0("mp_",  nms)
+names(vip_ls) <- paste0("vip_", nms)
+
+## Display results
+measures_df
+plot(mp_ls)
+plot(mp_ls, geom = "boxplot")
+plot(vip_ls)
+```
+
+The top takeaways would be: random forest uniformly performs best, naive bayes is worse (and loses variable importance), general linear models and scalar vector machines are somewhere in between. It is interesting to see that the error bars are larger than the feature importances themselves for glm and svm. This suggests that these models are extremely sensitive to this sort of permutation probing of variable importance. The above evaluates on training data. Let's compare against the held out data.
+
+
+# Model perfromance -- test data
+
+Let's parallel these metrics for the random 20% of the data we save for testing the models.
+
+```{r}
+exp_ls_test <- mp_ls_test <- vip_ls_test <- list()
+measures_df_test <- data.frame(
+  matrix(NA, nrow = length(nms), ncol = 4,
+         dimnames = list(nms, c("mse", "rmse", "r2", "mad")))
+)
+## For i in 1:length(models):
+.mute <- sapply(seq_along(mod_ls), function(i){
+    ## Unified explain object
+  exp_ls_test[[i]] <<- DALEX::explain(
+    model   = mod_ls[[i]],
+    data    = X_test,
+    y       = Y_test,
+    type    = "regression",
+    label   = nms[i],
+    verbose = FALSE
+  )
+  ## Model performance
+  mp_ls_test[[i]] <<- DALEX::model_performance(exp_ls_test[[i]])
+  measures_df_test[i, ] <<- unlist(mp_ls_test[[i]]$measures)
+  ## Variable importance
+  vip_ls_test[[i]] <<- variable_importance(
+    exp_ls_test[[i]], loss_function = loss_root_mean_square)
+})
+## Post-loop cleanup
+names(exp_ls_test) <- paste0("exp_", nms)
+names(mp_ls_test)  <- paste0("mp_",  nms)
+names(vip_ls_test) <- paste0("vip_", nms)
+
+## Display results
+measures_df_test
+plot(mp_ls_test)
+plot(mp_ls_test, geom = "boxplot")
+plot(vip_ls_test)
+```
+
+Model performance on the test set is much closer. Random forest and svm seem to the clear winner here. It's interesting to note that these models took longest to run as well. I will have to keep svm in mind as I continue modeling going forward.
+
+
+# Session info
+
+```{r}
+## packages used
+pkgs <- c(
+  "DALEX",
+  "randomForest",
+  "e1071",
+  "FNN",
+  "stats"
+)
+
+## package & session info
+devtools::session_info(pkgs)
+```
+
+# Related content
+
+- https://www.analyticsvidhya.com/blog/2017/09/common-machine-learning-algorithms/#h2_15
+- https://daviddalpiaz.github.io/r4sl/index.html
+- https://ema.drwhy.ai/
+
+<!-- - https://dalex.drwhy.ai/#examples -->
+<!-- - https://github.com/MI2DataLab/ResponsibleML-UseR2021 -->
+<!-- - https://uc-r.github.io/dalex#procedures -->
