@@ -1,0 +1,100 @@
+---
+title: "Oddstream ts/anomolies "
+subtitle: "On aggregated FIFA data (all quantitative)."
+author: "Nicholas Spyrison"
+date: "11 Mar 2022"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+---
+
+```{r opts_chunk, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# Gist
+
+<!-- Before working with Klaus -->
+I am going to brush up on working with time series (ts), de-mean/trend/season/period, As well as ts features. My data will be quite noisy, I want to see what is out there and work start brainstorming some ideas.
+
+
+# Summary
+
+In __oddstream__ we are looking at univariate time series and looking for anomalous behavior. There are 640 time series, for each of 1459 evenly spaced time samples.
+
+```{r}
+library(oddstream)
+library(tidyverse)
+t <- nrow(anomalous_stream)
+f <- ncol(anomalous_stream)
+
+data <- as_tibble(anomalous_stream) %>%
+  gather() %>%
+  mutate(key = rep((1:f), each = t), Time = rep(1:t, f)) %>%
+  setNames(c("Cable", "Value", "Time"))
+skimr::skim(data)
+
+p <- data %>%
+  ggplot(aes(x = Time, y = Cable, fill = Value)) +
+  geom_tile() +
+  scale_fill_gradientn(colours = c("#F0E442", "#000000", "#000000"), values = c(0, .1, max(anomalous_stream))) +
+  scale_x_continuous(breaks = seq(0, 1400, 200)) +
+  scale_y_continuous(breaks = seq(0, 600, 100)) +
+  labs(x= "Time", y= "Time Series ID")
+p
+```
+
+
+# Feature spaces (PC1:2)
+
+14 time series features are extracted. PCA is used to approximate and visualize this.
+
+```{r}
+## 100 time intervals, 100 time series, extract 14 features
+features <- extract_tsfeatures(anomalous_stream[1:100, 1:100]) 
+## PCA on 14 features
+pc       <- get_pc_space(features)
+p2       <- gg_featurespace(pc)
+p2
+```
+
+Can add density overlay as a visual guide to see distant points.
+
+```{r}
+# Perform a 2D kernel density estimation using MASS::kde2d() and display the results with contours.
+p2 + ggplot2::geom_density_2d()
+```
+
+
+# Train vs test thinking
+
+`find_odd_streams` takes sliding window approach to test if the features are 
+
+```{r}
+# Considers the first window  of the data set as the training set and the remaining as the test stream
+train_data  <- anomalous_stream[1:100, ]
+test_stream <- anomalous_stream[101:700, ]
+output      <- find_odd_streams(train_data, test_stream, trials = 50)
+
+dim(train_data)  ## first 100 time intervals for all TS
+dim(test_stream) ## Remaining 1355 time intervals for all TS.
+str(output)      ## $out_marix (sic), feature by TS 
+```
+
+Let's look 
+
+```{r}
+sum(output$out_marix) ## Count of flagged feats*TS deemed anomalous
+hist(apply(output$out_marix, 1, sum),
+     main = "# Anomalous intervals within 14 features",
+     xlab = "# Anomalous intervals in 1 feature") ## Anomalous intervals by feat.
+hist(apply(output$out_marix, 2, sum),
+     main = "# Anomalous intervals within 640 TS",
+     xlab = "# Anomalous intervals in 1 TS") ## Anomalous intervals by feat.
+```
