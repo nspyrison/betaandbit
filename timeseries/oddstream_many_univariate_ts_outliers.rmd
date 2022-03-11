@@ -1,6 +1,5 @@
 ---
-title: "Oddstream ts/anomolies "
-subtitle: "On aggregated FIFA data (all quantitative)."
+title: "Oddstream ts/anomolies"
 author: "Nicholas Spyrison"
 date: "11 Mar 2022"
 output: 
@@ -24,7 +23,7 @@ knitr::opts_chunk$set(
 I am going to brush up on working with time series (ts), de-mean/trend/season/period, As well as ts features. My data will be quite noisy, I want to see what is out there and work start brainstorming some ideas.
 
 
-# Summary
+# Setup
 
 In __oddstream__ we are looking at univariate time series and looking for anomalous behavior. There are 640 time series, for each of 1459 evenly spaced time samples.
 
@@ -56,7 +55,7 @@ p
 14 time series features are extracted. PCA is used to approximate and visualize this.
 
 ```{r}
-## 100 time intervals, 100 time series, extract 14 features
+## 100 time obs, 100 time series, extract 14 features
 features <- extract_tsfeatures(anomalous_stream[1:100, 1:100]) 
 ## PCA on 14 features
 pc       <- get_pc_space(features)
@@ -82,8 +81,8 @@ train_data  <- anomalous_stream[1:100, ]
 test_stream <- anomalous_stream[101:700, ]
 output      <- find_odd_streams(train_data, test_stream, trials = 50)
 
-dim(train_data)  ## first 100 time intervals for all TS
-dim(test_stream) ## Remaining 1355 time intervals for all TS.
+dim(train_data)  ## first 100 time obs for all TS
+dim(test_stream) ## Remaining 1355 time obs for all TS.
 str(output)      ## $out_marix (sic), feature by TS 
 ```
 
@@ -92,9 +91,26 @@ Let's look
 ```{r}
 sum(output$out_marix) ## Count of flagged feats*TS deemed anomalous
 hist(apply(output$out_marix, 1, sum),
-     main = "# Anomalous intervals within 14 features",
-     xlab = "# Anomalous intervals in 1 feature") ## Anomalous intervals by feat.
+     main = "# Anomalous obs within 14 features",
+     xlab = "# Anomalous obs in 1 feature") ## Anomalous obs by feat.
 hist(apply(output$out_marix, 2, sum),
-     main = "# Anomalous intervals within 640 TS",
-     xlab = "# Anomalous intervals in 1 TS") ## Anomalous intervals by feat.
+     main = "# Anomalous obs within 640 TS",
+     xlab = "# Anomalous obs in 1 TS") ## Anomalous obs by feat.
 ```
+
+
+
+# Session info
+
+```{r}
+## Packages used
+pkgs <- c("oddstream")
+
+## Package & session info
+devtools::session_info(pkgs)
+```
+
+# Sources & related content
+
+- https://github.com/pridiltal, see oddstream, oddwater, stray and their associated papers
+- https://github.com/pridiltal/oddstream

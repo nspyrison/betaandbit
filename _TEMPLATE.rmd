@@ -1,0 +1,55 @@
+---
+title: "<Title>"
+subtitle: "<Option subtitle>"
+author: "Nicholas Spyrison"
+date: "nn mmm yyyy"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+---
+
+```{r opts_chunk, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# Gist
+
+Set the context, data, package etc.
+
+
+# Setup
+
+....
+
+```{r}
+library(magrittr)
+
+print("data, init, and summarization")
+```
+
+
+# Work header 1
+
+```{r}
+summary(mtcars)
+```
+
+
+# Session info
+
+```{r}
+## Packages used
+pkgs <- c("oddstream")
+## Package & session info
+devtools::session_info(pkgs)
+```
+
+# Sources & related content
+
+- https://en.wikipedia.org/ ## etc

@@ -210,16 +210,9 @@ Model performance on the test set is much closer. Random forest and svm seem to 
 # Session info
 
 ```{r}
-## packages used
-pkgs <- c(
-  "DALEX",
-  "randomForest",
-  "e1071",
-  "FNN",
-  "stats"
-)
-
-## package & session info
+## Packages used
+pkgs <- c("DALEX", "randomForest", "e1071", "FNN", "stats")
+## Package & session info
 devtools::session_info(pkgs)
 ```
 

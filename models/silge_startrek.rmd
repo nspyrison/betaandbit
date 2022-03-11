@@ -1,7 +1,7 @@
 ---
 title: "TidyTuesday, startrek with workflowsets"
   ## content also in  "Hitchhiker's Guide to Responsible machine learning"
-subtitle: "Followiung Julia Silge's analysis"
+subtitle: "Following Julia Silge's analysis"
 author: "Nicholas Spyrison"
 date: "06 Mar 2022"
 output: 
@@ -59,3 +59,18 @@ computer_counts %>%
   facet_wrap(vars(char_type), scales = "free_y") +
   labs(y = NULL)
 ```
+
+
+# Session info
+
+```{r}
+## Packages used
+pkgs <- c("tidymodels", "tidytext", "tidylo")
+
+## Package & session info
+devtools::session_info(pkgs)
+```
+
+# Sources & related content
+
+- https://juliasilge.com/blog/star-trek/
