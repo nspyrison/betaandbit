@@ -1,0 +1,109 @@
+---
+title: "Forecasting principles and practice"
+subtitle: "Brainstorming example for noisy busy univariate TS"
+author: "Nicholas Spyrison"
+date: "12 Mar 2022"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+---
+
+```{r opts_chunk, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# Gist
+
+I am using this to vet and flesh out some idea for a noisy univariate time series. Typically, I think about time series features approaches. For example, Rob and Priyanga did several pieces with this approach for water quality data in streams. I will be referring to Rob & George's fpp2, https://otexts.com/fpp2/, for examples and inspiration as well. I will be focusing on a particularly noisy time series, while working in parallel with the content in the book. 
+
+
+# Setup
+
+We'll use melb-syd flight data as an example ts with noise and oddities.
+
+```{r}
+library(fpp2)
+#library(ggplot2)
+
+dat <- fpp2::melsyd[, "Economy.Class"]
+str(dat)
+sum(is.na(dat))
+autoplot(dat) +
+  ggtitle("Economy class passengers: Melbourne-Sydney") +
+  xlab("Year") +
+  ylab("Passengers ['000]")
+```
+
+
+# Autocorellation
+
+The data set is quite mess and there are few small seasonal changes. I want to see if any autocorelation is picked up on as an indication of signal shining through the noise.
+
+```{r}
+ggAcf(dat, lag = 52 * (1993 - 1987) / 2)
+```
+
+Good, plenty of signal to account for. There seems to be near linear negative trend with possibly a few seasons/cycles. Below we use a few other fast higher-level visualization. They are not particularly insightful here, but can be ussuful in other more regular time series.
+
+```{r}
+ggseasonplot(dat)
+ggsubseriesplot(dat)
+gglagplot(dat)
+```
+
+# Box-cox transformation
+
+We can use a box-cox transformation to distribute the data normally. The tranfsormation has one parameter, $\lambda$. A good value for this can be estimated with `BoxCox.lambda`. The text-book example for box-cox transformation is for growing/shrinking seasonal variation such as in the data set `elec`
+
+```{r}
+(lambda <- BoxCox.lambda(dat))
+dat_bc <- BoxCox(dat,lambda)
+## Normalized difference doesn't plot, cause of NA?
+#dat_diff <- scale(dat) - scale(dat_bc)
+require(patchwork)
+autoplot(dat) +
+  ylab("Passengers ['000]") +
+  autoplot(dat_bc) +
+  ylab(paste0("Passengers (BoxCox(", round(lambda), "))"))
+```
+
+
+# Random walk forecasts
+
+We can do some preliminary with random walk forecasting.
+
+```{r}
+fc  <- rwf(eggs, drift=TRUE, lambda=0, h=50, level=80)
+fc2 <- rwf(eggs, drift=TRUE, lambda=0, h=50, level=80, biasadj=TRUE)
+autoplot(eggs) +
+  autolayer(fc,  series="Simple back transformation") +
+  autolayer(fc2, series="Bias adjusted", PI=FALSE) +
+  guides(colour=guide_legend(title="Forecast"))
+
+fc  <- rwf(dat, drift=FALSE, lambda=lambda, h=50, level=50)
+fc2 <- rwf(dat, drift=FALSE, lambda=lambda, h=50, level=50, biasadj=TRUE)
+autoplot(dat) +
+  autolayer(fc,  series="Simple back transformation") +
+  autolayer(fc2, series="Bias adjusted", PI=FALSE) +
+  guides(colour=guide_legend(title="Forecast"))
+```
+
+# Session info
+
+```{r}
+## Packages used
+pkgs <- c("oddstream")
+## Package & session info
+devtools::session_info(pkgs)
+```
+
+# Sources & related content
+
+- https://otexts.com/fpp2/
+- https://github.com/pridiltal/oddstream
