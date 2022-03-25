@@ -73,6 +73,8 @@ autoplot(dat) +
   ylab(paste0("Passengers (BoxCox(", round(lambda), "))"))
 ```
 
+Working through other examples I want to box-cox works best when: i) seasonal variation is sizable compared to noise and ii) seasonal variation changes through out the period. 
+
 
 # Random walk forecasts
 
@@ -86,13 +88,23 @@ autoplot(eggs) +
   autolayer(fc2, series="Bias adjusted", PI=FALSE) +
   guides(colour=guide_legend(title="Forecast"))
 
-fc  <- rwf(dat, drift=FALSE, lambda=lambda, h=50, level=50)
-fc2 <- rwf(dat, drift=FALSE, lambda=lambda, h=50, level=50, biasadj=TRUE)
+fc <- rwf(dat, drift=FALSE, lambda=lambda, h=50, level=50)
+fc_adj <- rwf(dat, drift=FALSE, lambda=lambda, h=50, level=50, biasadj=TRUE)
 autoplot(dat) +
-  autolayer(fc,  series="Simple back transformation") +
-  autolayer(fc2, series="Bias adjusted", PI=FALSE) +
+  autolayer(fc, series="Simple back transformation") +
+  autolayer(fc_adj, series="Bias adjusted", PI=FALSE) +
   guides(colour=guide_legend(title="Forecast"))
 ```
+
+# model summary with `checkresiduals()`
+
+```{r}
+checkresiduals(fc_adj)
+```
+
+Want symmetric white noise on top. If visuals patterns, drift, or seasonality is present this information is not captured by the model. Residuals ideally are normal; this is pretty good, few low values in the end of 1988. peaks and regular occilations in the ACF, indicate autocorrelation. This is corroborated with the Ljung-Box test (p = 9e-7), with a null hypothesis of independence. That is there is strong evidence suggesting that there auto-dependance in the model (that could presumably suggests a better model could be captured). 
+
+#
 
 # Session info
 
