@@ -104,7 +104,57 @@ checkresiduals(fc_adj)
 
 Want symmetric white noise on top. If visuals patterns, drift, or seasonality is present this information is not captured by the model. Residuals ideally are normal; this is pretty good, few low values in the end of 1988. peaks and regular occilations in the ACF, indicate autocorrelation. This is corroborated with the Ljung-Box test (p = 9e-7), with a null hypothesis of independence. That is there is strong evidence suggesting that there auto-dependance in the model (that could presumably suggests a better model could be captured). 
 
-#
+# Piecewise and various forecasting methods
+
+```{r}
+dat
+h <- 13
+fit.lin    <- tslm(dat ~ trend + season)
+fcasts.lin <- forecast(fit.lin, h = h)
+fit.exp    <- tslm(dat ~ trend + season, lambda = BoxCox.lambda(dat))
+fcasts.exp <- forecast(fit.exp, h = h)
+
+t <- time(dat)
+# t.break1 <- c(1989, 13) ## Didn't work
+# t.break2 <- c(1990, 1)
+# t.break3 <- c(1991, 26)
+t.break1 <- 1989
+t.break2 <- 1990
+t.break3 <- 1991.5
+tb1 <- ts(pmax(0, t - t.break1), start = min(t))
+tb2 <- ts(pmax(0, t - t.break2), start = min(t))
+tb3 <- ts(pmax(0, t - t.break3), start = min(t))
+
+fit.pw <- tslm(dat ~ t + tb1 + tb2 + tb3)
+t.new <- t[length(t)] + seq(h)
+tb1.new <- tb1[length(tb1)] + seq(h)
+tb2.new <- tb2[length(tb2)] + seq(h)
+tb3.new <- tb3[length(tb3)] + seq(h)
+
+newdata <- cbind(t=t.new, tb1=tb1.new, tb2=tb2.new, tb3=tb3.new) %>%
+  as.data.frame()
+fcasts.pw <- forecast(fit.pw, newdata = newdata)
+
+fit.spline <- tslm(dat ~ t + I(t^2) + I(t^3) +
+                     I(tb1^3) + I(tb2^3) + I(tb3^3))
+fcasts.spl <- forecast(fit.spline, newdata = newdata)
+
+autoplot(dat, size = 1) +
+  autolayer(fitted(fit.lin), series = "Linear", size = 1) +
+  autolayer(fitted(fit.exp), series = "Exponential", size = 1) +
+  autolayer(fitted(fit.pw), series = "Piecewise", size = 1) +
+  autolayer(fitted(fit.spline), series = "Cubic Spline", size = 1) +
+  autolayer(fcasts.pw, series="Piecewise") +
+  autolayer(fcasts.lin, series="Linear", PI=FALSE) +
+  autolayer(fcasts.exp, series="Exponential", PI=FALSE) +
+  #autolayer(fcasts.spl, series="Cubic Spline", PI=FALSE) + ## way too high
+  xlab("Year") + ylab("Winning times in minutes") +
+  ggtitle("Mel-Syd, Economy.Class") +
+  guides(colour = guide_legend(title = " "))
+
+checkresiduals(fit.pw)
+checkresiduals(fit.spline)
+```
 
 # Session info
 

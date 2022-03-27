@@ -155,4 +155,39 @@ str(elecdaily)
 autoplot(mens400) ## downward trend, flattens at the end as would be expected for winning race times.
 #fit <- tslm( ~ trend, mens400) ## cannot fit, going to visual analytics
 autoplot(mens400) + geom_smooth(method = "lm") ## decrease of about 2.5 sec / 40 years or -.0625s/yr.
+df <- data.frame(time = mens400, year = seq(1896, 2016, 4))
+fit <- lm(time~year, df)
+fit$coefficients
+checkresiduals(fit)
+
+idx <- !is.na(mens400)
+df <- data.frame(
+  wining_time = mens400[idx],
+  year = time(mens400)[idx],
+  residuals = residuals(fit)
+)
+ggplot(df, aes(residuals, year)) + 
+  geom_point()
+## Cresent shaped indicating not linear fit is needed, which we already noted. 
+forecast(fit, newdata=data.frame(year=2020))
+
+## Exercise 3
+easter(ausbeer) ## show easter osscilating between Q1 and Q2 over the years.
+
+## Exercise 4, woah that seems left field, idk wherer to begin
+
+## Exercise 5
+?fancy
+autoplot(fancy) ## regular seasonal peak around the holidays and exponential base growth
+## Because, we span several orders of magnitude, and exp growth
+log(fancy)
+
+fit <- tslm(log(fancy) ~ trend + season, fancy)
+checkresiduals(fit) ## there is still sine signal in the residuals
+coefficients(fit)
+## bgtest, p-value = 0.003, there is higher-order serial correlation\
+(newdata <- data.frame(year=1994:(1994+36)))
+fc <- forecast(fit, newdata=newdata)
+autoplot(fancy) + autolayer(fc, PI = TRUE, series = "increase")
+
 
