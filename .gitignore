@@ -4,3 +4,4 @@
 .Ruserdata
 
 /models/mnist-data/*
+/logs/*

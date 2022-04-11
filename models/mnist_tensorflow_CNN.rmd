@@ -1,0 +1,176 @@
+---
+title: "Minst and convolutional nueral networks"
+subtitle: "Using keras and tensorflow (GPU)"
+author: "Nicholas Spyrison"
+date: "11 Apr 2022"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+---
+
+```{r opts_chunk, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  error   = FALSE
+)
+## Following source and setup:
+if(F){
+  browseURL("https://rstudio-pubs-static.s3.amazonaws.com/288923_11f4a96b94a74590af0ca460b6ce7648.html#/3")
+  #installing 'devtools' package for installing Packages from github
+  install.packages('devtools')
+  devtools::install_github("rstudio/keras") 
+  #installing keras 
+  #It will first install tensorflow then keras.
+  #The above code will install the keras library from the GitHub repository.
+  #Installing Keras for R
+  install.packages("rstudio/keras")
+  #loading keras in R 
+  library(keras)
+  install_keras()
+  #The R interface to Keras uses TensorFlow as it’s underlying computation engine.
+  tensorflow::install_tensorflow(gpu = T)
+}
+```
+
+# Gist
+
+This is looking the MINST dataset, a series of low resolution hand-darwn digits. It is a standard classification set for image analysis where each pixel can be treated as a variable in grey scale [0, 1]. each image is 28x28 or 784 variables, there are 60000 training obs, and 10000 test obs. More advances takes may aggregate over the surround 9 pixels for example to reduce the size of the variables. I am also excited to use `tensorflow`, I think this should be using GPU computing for parallelization and hopefully near linear performance increase.
+
+Specifically here we will be creating a sequentially Convolutional Nueral Network (CNN) and use that to classify the digits. We have previous installed Python 3.10, keras, and tensorflow with GPU (NVIDIA GPU required)
+
+
+# Setup and data
+
+```{r}
+library(keras)
+#Getting started with Keras for R
+#The core data structure of Keras is a model, a way to organize layers. 
+#The simplest type of model is the Sequential model, a linear stack of layers. 
+#For more complex architectures, you should use the Keras functional API, 
+#which allows to build arbitrary graphs of layers.
+
+## Data setup -----
+#loading the keras inbuilt mnist dataset
+data<-dataset_mnist()
+str(data)
+siz <- object.size(data)
+print(siz, units="Mb")
+
+#Training Data
+train_x <- data$train$x
+train_y <- data$train$y
+#Test Data
+test_x <- data$test$x
+test_y <- data$test$y
+
+#converting a 2D array into a 1D array for feeding
+#into the MLP and normalising the matrix
+train_x <- array(as.numeric(train_x), dim = c(dim(train_x)[[1]], 784))
+test_x  <- array(as.numeric(test_x),  dim = c(dim(test_x)[[1]],  784))
+#scale to [0, 1]
+train_x <- train_x / 255
+test_x  <- test_x  / 255
+#target to classification, of 10 digits
+train_y <- to_categorical(train_y, 10)
+test_y  <- to_categorical(test_y, 10)
+```
+
+# Convolutional nueral network structure
+```{r}
+#Now defining a keras MLP sequential model containing a linear stack of layers
+#defining the model with 1 input layer[256 neurons], 1 hidden layer[128 neurons] 
+#with dropout rate 0.4 and 1 output layer[10 neurons]
+#i.e number of digits from 0 to 9
+
+model <- keras_model_sequential() %>%
+  #Input layer-256 units
+  #Add a densely-connected NN layer to an output
+  layer_dense(units = 256, activation = "relu",
+              input_shape = c(784)) %>%
+  #dropout layer to prevent Overfitting
+  layer_dropout(rate = 0.4) %>%
+  #Hidden Layer-128 units
+  #Apply an activation function to an output.
+  #Relu can only be used for Hidden layers
+  layer_dense(units = 128, activation = "relu") %>%
+  #dropout layer to prevent Overfitting
+  layer_dropout(rate = 0.4) %>%
+  #output layer; 10 digits
+  layer_dense(units = 10, activation = "softmax")
+#softmax activation for Output layer which computes the probabilities for the classes
+#Compiling The Model
+#Model's summary-showing its architecture
+summary(model)
+```
+
+# Compile, train, & performance
+```{r}
+#Compiling the Model and Optimizing the model
+#Configure a Keras model for training using compile()
+model %>%
+  compile(loss ="categorical_crossentropy",
+          optimizer = "adam",
+          metrics = c("accuracy"))
+
+##Training the Model
+#Now let's train the model on the training dataset  
+#epochs = No of iterations on a dataset.
+#batchsize = Number of samples per gradient update.
+tictoc::tic("CNN fit")
+history <- model %>% fit(
+  train_x, train_y, epochs = 10, batch_size = 128,
+  callbacks = callback_tensorboard(log_dir = "logs/run_b"),
+  validation_split = 0.2) 
+tictoc::toc()
+#train on 80% of train set and will evaluate 
+#model's metrics such as loss and accuracy on leftover data
+#after training --model gives
+
+summary(history)
+history$params
+history$metrics #gives loss and accuracy metric for each epoch
+```
+
+Ok, that looks like we need a local instance of Python 3.7, will have to come back to this another time. For now we'll follow though with the example
+
+# Ploting model performance by epoch
+
+```{r}
+#plotting Model - epoch vs acc and Loss
+plot(history, labels = T)
+which.min(history$metrics$acc)
+#Accuracy least for 1st epoch and highest for last epoch-10
+plot(x = history$metrics$acc,y = history$metrics$loss,
+     pch = 19, col = 'red', type = 'b',
+     ylab = "Error on trining Data", xlab = "Accuracy on Training Data")
+title("Plot of accuracy vs Loss")
+legend("topright", c("Epochs"), col = "red", pch = 19)
+#Now Finally evaluating the Model's Performance
+#Evaluating model on the Test dataset
+score <- model %>%
+  evaluate(test_x, test_y, batch_size = 128)
+
+score
+```
+
+# Session info
+
+```{r}
+## packages used
+pkgs <- c(
+  "keras"
+)
+
+## package & session info
+devtools::session_info(pkgs)
+```
+
+# Related content
+
+- https://rstudio-pubs-static.s3.amazonaws.com/288923_11f4a96b94a74590af0ca460b6ce7648.html#/3
+- https://github.com/anishsingh20/Deep-Learning-in-R-using-Keras-and-Tensorflow-
+
