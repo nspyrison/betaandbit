@@ -1,8 +1,8 @@
 ---
-title: "Minst and convolutional nueral networks"
+title: "Minst and nueral networks"
 subtitle: "Using keras and tensorflow (GPU)"
 author: "Nicholas Spyrison"
-date: "11 Apr 2022"
+date: "12 Apr 2022"
 output: 
   html_document:
     toc: true
@@ -38,9 +38,9 @@ if(F){
 
 # Gist
 
-This is looking the MINST dataset, a series of low resolution hand-darwn digits. It is a standard classification set for image analysis where each pixel can be treated as a variable in grey scale [0, 1]. each image is 28x28 or 784 variables, there are 60000 training obs, and 10000 test obs. More advances takes may aggregate over the surround 9 pixels for example to reduce the size of the variables. I am also excited to use `tensorflow`, I think this should be using GPU computing for parallelization and hopefully near linear performance increase.
+This is looking the MINST dataset, a series of low resolution hand-darwn digits. It is a standard classification set for image analysis where each pixel can be treated as a variable in grey scale [0, 1]. each image is 28x28 or 784 variables, there are 60000 training obs, and 10000 test obs. More advances takes, such as Convectional NN aggregate over the surrounding 8 pixels for example to reduce the number of the variables. 
 
-Specifically here we will be creating a sequentially Convolutional Nueral Network (CNN) and use that to classify the digits. We have previous installed Python 3.10, keras, and tensorflow with GPU (NVIDIA GPU required)
+Specifically here we will be creating a sequentially nueral network and use that to classify the digits. We have previous installed Python 3.10, keras, and tensorflow with GPU (NVIDIA GPU required). I am excited to use `keras` & `tensorflow`, I think this should be using GPU computing for parallelization and hopefully near linear performance increase.
 
 
 # Setup and data
@@ -79,7 +79,7 @@ train_y <- to_categorical(train_y, 10)
 test_y  <- to_categorical(test_y, 10)
 ```
 
-# Convolutional nueral network structure
+# Nueral network structure
 ```{r}
 #Now defining a keras MLP sequential model containing a linear stack of layers
 #defining the model with 1 input layer[256 neurons], 1 hidden layer[128 neurons] 
@@ -106,6 +106,19 @@ model <- keras_model_sequential() %>%
 #Model's summary-showing its architecture
 summary(model)
 ```
+
+Essentially the structure is somewhat similar with:
+
+![](https://miro.medium.com/max/1400/0*_SH7tsNDTkGXWtZb.png)
+
+Though the specifics for our case are: 
+
+1) first hidden layer is has a full 256 nodes (relu shape)
+2) dropout layer, learning = 0.4
+3) second hidden layer is has a full 128 nodes (relu shape)
+4) dropout layer, learning = 0.4
+5) output layer, of the desired 10 digit classification (softmax shape)
+
 
 # Compile, train, & performance
 ```{r}
@@ -135,25 +148,33 @@ history$params
 history$metrics #gives loss and accuracy metric for each epoch
 ```
 
-Ok, that looks like we need a local instance of Python 3.7, will have to come back to this another time. For now we'll follow though with the example
 
 # Ploting model performance by epoch
 
 ```{r}
-#plotting Model - epoch vs acc and Loss
+#plotting Model history - epoch vs acc and Loss
 plot(history, labels = T)
 which.min(history$metrics$acc)
+which.max(history$metrics$acc)
 #Accuracy least for 1st epoch and highest for last epoch-10
-plot(x = history$metrics$acc,y = history$metrics$loss,
-     pch = 19, col = 'red', type = 'b',
-     ylab = "Error on trining Data", xlab = "Accuracy on Training Data")
-title("Plot of accuracy vs Loss")
-legend("topright", c("Epochs"), col = "red", pch = 19)
+
+#Plotting acc vs loss
+require(ggplot2)
+df <- data.frame(epoch    = 1:10,
+                 accuracy = history$metrics$accuracy,
+                 loss     = history$metrics$loss)
+ggplot(df, aes(accuracy, loss, color = epoch)) +
+  geom_point() + 
+  geom_line() +
+  theme_minimal() +
+  labs(title = "Accuracy vs Loss over epoch",
+       x = "Accuracy (train data)",
+       y = "Loss (train data)")
+
 #Now Finally evaluating the Model's Performance
 #Evaluating model on the Test dataset
 score <- model %>%
   evaluate(test_x, test_y, batch_size = 128)
-
 score
 ```
 
@@ -173,4 +194,5 @@ devtools::session_info(pkgs)
 
 - https://rstudio-pubs-static.s3.amazonaws.com/288923_11f4a96b94a74590af0ca460b6ce7648.html#/3
 - https://github.com/anishsingh20/Deep-Learning-in-R-using-Keras-and-Tensorflow-
+- https://towardsdatascience.com/designing-your-neural-networks-a5e4617027ed
 

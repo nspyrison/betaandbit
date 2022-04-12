@@ -4,4 +4,5 @@
 .Ruserdata
 
 /models/mnist-data/*
+/models/mnist_keras_NN_files/*
 /logs/*
