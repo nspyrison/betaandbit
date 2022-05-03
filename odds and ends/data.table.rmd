@@ -1,0 +1,136 @@
+---
+title: "Intro to data.table syntax"
+subtitle: "<Option subtitle>"
+author: "Nicholas Spyrison"
+date: "03 May 2022"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+---
+
+```{r opts_chunk, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# Gist
+
+Learning __data.table__ syntax following the intro vignette; https://cran.r-project.org/web/packages/data.table/vignettes/datatable-intro.html
+
+__data.table__ provides unique data.frame/tibble structures, a parrellized and "self-optimizing" interface for perform common __dplyr__/SQL verbs. While reading is a bit dense, it follows the general form of:
+
+```
+DT[i, j, by][...]
+
+##   R:                 i                 j        by
+## SQL:  where | order by   select | update  group by
+```
+
+keep in mind that there is also __dtplyr__ which tries to marry the speed of __data.table__ and the syntax/behavior of the __dplyr/tidyverse__.
+
+# Setup
+
+....
+
+```{r}
+library(data.table)
+
+input <- "https://raw.githubusercontent.com/Rdatatable/data.table/master/vignettes/flights14.csv"
+flights <- fread(input)
+flights
+dim(flights)
+```
+
+
+# Examples 
+
+## Selecting rows
+
+```{r}
+## Get all the flights with “JFK” as the origin airport in the month of June.
+ans <- flights[origin == "JFK" & month == 6L]
+head(ans)
+
+## Sort flights first by column origin in ascending order, and then by dest in descending order:
+ans <- flights[order(origin, -dest)]
+head(ans)
+
+## How many trips have been made in 2014 from “JFK” airport in the month of June?
+## .N is roughly dplyr::n() or length(var)
+ans <- flights[origin == "JFK" & month == 6L, .N]
+ans
+```
+
+## Selecting columns
+
+```{r}
+## Select both arr_delay and dep_delay columns the data.frame way.
+ans <- flights[, c("arr_delay", "dep_delay")]
+head(ans)
+
+## Select columns named in a variable using the .. prefix
+select_cols = c("arr_delay", "dep_delay")
+flights[ , ..select_cols] ## Think of .. as, one level up.
+## Alternatively, use `with=FALSE`: 
+#flights[ , select_cols, with = FALSE]
+```
+
+
+## Chaining, add/update
+
+```{r}
+## WHERE/filter then brackets into ordering
+ans <- flights[origin == "JFK" & month == 6L][order(origin, -dest)]
+ans
+
+## Add/update with :=
+flights[, tot_delay := dep_delay + arr_delay][,c(4:5, 12)]
+```
+
+## Joins
+
+```{r}
+set.seed(42)
+big <- data.table( 
+  id = LETTERS[2:11],
+  a = sample(101:105, 10, replace = TRUE),
+  b = sample(200:300, 10)
+)
+small <- data.table(
+  id = LETTERS[1:5],
+  y = sample(1:5, 5, replace = TRUE),
+  z = sample(10:20, 5) 
+)
+
+# Right outer join
+big[small, on = .(id)]
+
+# Inner join
+small[big, on = .(id), nomatch = NULL]
+
+# Anti-join 
+# (return rows of big with no match in small)
+big[!small, on = .(id)]
+```
+
+
+
+# Session info
+
+```{r}
+## Packages used
+pkgs <- c("data.table")
+## Package & session info
+devtools::session_info(pkgs)
+```
+
+# Sources & related content
+
+- https://cran.r-project.org/web/packages/data.table/vignettes/datatable-intro.html
+- https://medium.com/analytics-vidhya/r-data-table-joins-48f00b46ce29
+- https://dtplyr.tidyverse.org/
