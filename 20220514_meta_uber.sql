@@ -115,4 +115,4 @@ WHERE rank < 4;
 ---- Take Aways:
 -- 1) use ' instead of "".
 -- 2) When in doubt add a CTE; WITH name AS (<query>)
--- 3) use windowed 
+-- 3) use windowed queries for WHERE logic (?)
