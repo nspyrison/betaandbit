@@ -1,0 +1,128 @@
+---
+title: "ggenealogy Vignette"
+subtitle: "And academic genealogy of mathematicians"
+author: "Nicholas Spyrison"
+date: "09 Jun 2022"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+---
+
+```{r opts_chunk, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# Gist
+
+The site https://www.mathgenealogy.org/, contains over 276,000 observations of Mathematics PhD grads and their supervisors. This is effectively a geneology of mathematical supervision (which should have some sizable effect on thinking, topics, and reading). The R package __ggenealogy__ contains an example dataset from this source and facilitates the consumption and ploting of this type of data.
+
+Given that my thesis was just certified I want to try to see if I can trace up the mathematical genealogy tree to visualize my thought-leading predecessors.
+
+
+# Setup
+
+```{r}
+library(ggenealogy)
+library(ggplot2)
+library(magrittr)
+
+data("statGeneal", package = "ggenealogy")
+df <- statGeneal %>%
+  #dplyr::filter(parent != "") %>%
+  tibble::as_tibble()
+print(df, n=3)
+hist(df$gradYear)
+```
+
+Ok, about 8k observations where "all the parent-child relationships where both parent and child received an advanced degree of statistics as of June 6, 2015." This may or may-not contain the need people I am looking for.
+
+Note that grad year:
+
+- Is in the range [1864, 2015].
+- Median is 5 greater than mean (left skew)
+
+
+# Where in the world is ...?
+
+Through trial and error I know that Di Cook is not in the data. The original paper does have Thomas Lumley, another professor of interest. But perhaps first I will manual look up Cook's genealogy.
+
+Di, Di's supersivor, and "grand-supervisor" are not in the list, may have to go to plan B, looking at Thomas Lumley. After looking at both parents and children, I know that Thomas has 1 child in the data; Petra Buzkova. From the paper, we can see that the oldest predescor is David Cox.
+
+```{r}
+lumley_p <- grepl("Lumley", df$parent, fixed = TRUE)
+sum(lumley_p)
+df[lumley_p, ]
+
+## Prep the network info, more on this in `As network layout (iGraph)`.
+ig <- dfToIG(df)
+```
+
+# Finding a path
+
+Let's grab the paths while we are on the topic of names. Actually, if we go all the way to Buzkova, this is the example case in the paper.
+
+```{r}
+pathCB <- getPath("David Cox", "Petra Buzkova", ig, df,
+                  "gradYear", isDirected = FALSE)
+plotPath(pathCB, df, "gradYear", fontFace = 4) +
+  xlab("Graduation Year") +
+  theme(axis.text = element_text(size = 10),
+        axis.title = element_text(size = 10)) +
+  scale_x_continuous(expand = c(0.1, 0.2))
+```
+
+Good, we have a start. We will want to find a way to traverse the hierarchy to find all of the ancestors without filling in the cousin nodes (or more preferably faintly filling them in). As an example poster, see https://www.mathgenealogy.org/posters/raich.pdf
+
+# Making trees
+
+```{r}
+l <- plotAncDes("David Cox", df, mAnc = 1, mDes = 6, vCol = "blue") +
+  labs(subtitle = "Interesting, but too many \n  cousins of Thomas Lumley")
+r <- plotAncDes("Thomas Lumley", df, mAnc = 6, mDes = 1, vCol = "blue") +
+ labs(subtitle =  "Not very interesting, \n  nb only 1:1 relationships")
+
+library(patchwork)
+l + r
+```
+
+```{r}
+plotPathOnAll(pathCB, df, ig, "gradYear",
+              bin = 200, nodeSize = 1, pathNodeSize = 2.5,
+              nodeCol = "darkgray", edgeCol = "lightgray", 
+              animate = TRUE) ## plotly static interaction not animated.
+```
+
+
+# As network layouts (iGraph)
+
+
+
+```{r}
+ig <- dfToIG(df)
+class(ig)
+ig
+getBasicStatistics(ig)
+plot(ig)
+
+```
+
+
+# Session info
+
+```{r}
+## Packages used
+pkgs <- c("ggenealogy", "ggplot2")
+## Package & session info
+devtools::session_info(pkgs)
+```
+
+# Sources & related content
+
+- https://www.jstatsoft.org/article/view/v089i13
+- https://www.mathgenealogy.org/index.php
