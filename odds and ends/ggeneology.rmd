@@ -77,9 +77,12 @@ plotPath(pathCB, df, "gradYear", fontFace = 4) +
   scale_x_continuous(expand = c(0.1, 0.2))
 ```
 
-Good, we have a start. We will want to find a way to traverse the hierarchy to find all of the ancestors without filling in the cousin nodes (or more preferably faintly filling them in). As an example poster, see https://www.mathgenealogy.org/posters/raich.pdf
+Good, we have a start. We will want to find a way to traverse the hierarchy to find all of the ancestors without filling in the cousin nodes (or more preferably faintly filling them in). As an example poster, see https://www.mathgenealogy.org/posters/raich.pdf.
+
 
 # Making trees
+
+We can look at trees from a top-down or bottom-up view. Top-down works well, though bottom-up not so much, at least with this data and these functions. Of particular notice, is that the later case contains all 1:1 student:advisers. Studying the example poster we see that 
 
 ```{r}
 l <- plotAncDes("David Cox", df, mAnc = 1, mDes = 6, vCol = "blue") +
@@ -91,17 +94,37 @@ library(patchwork)
 l + r
 ```
 
+# Look for a better tree
+
+I looked at a few of the late children from the `plotPathOnAll` and by chance saw Hilary Parker, who co-hosts the Not so Standard Deviations, https://nssdeviations.com/, which I am a huge fan of. Let's see if she has a better tree:
+
+```{r}
+parker_p <- grepl("Parker", df$child, fixed = TRUE)
+sum(parker_p)
+parkers <- df[parker_p, ] %>% dplyr::pull(child)
+
+plotAncDes("Hilary Parker", df, mAnc = 1, mDes = 6, vCol = "blue") +
+  labs(subtitle = "Hilary Parker")
+```
+
+Well, turns out none of (8) the Parker students have good trees. In my opinion the filter on the data requiring rows to be labeled as statistics focuses is too restrictive. Another short coming is that I haven't seen an example of a student having multiple advisers.
+
+
+# Path on all
+
+We can also highlight a path against the backdrop of the rest of the data placed with iterating `y`-axis height. It looks neat, but seems a bit arbitrary.
+
 ```{r}
 plotPathOnAll(pathCB, df, ig, "gradYear",
-              bin = 200, nodeSize = 1, pathNodeSize = 2.5,
-              nodeCol = "darkgray", edgeCol = "lightgray", 
+              bin = 200, nodeSize = .5, pathNodeSize = 2.5,
+              nodeCol = "grey60", edgeCol = "grey80",
               animate = TRUE) ## plotly static interaction not animated.
 ```
 
 
 # As network layouts (iGraph)
 
-
+In network and graphs, the __iGraph__ package is a long standing go-to. We can also get to such an object with `dfToIG()`. This opens the door to all sorts of layouts and other network-related functions.
 
 ```{r}
 ig <- dfToIG(df)
@@ -109,8 +132,11 @@ class(ig)
 ig
 getBasicStatistics(ig)
 plot(ig)
-
 ```
+
+# Conclusion
+
+There is definitely potential to reproduce such geneology posters. Unfortunately, the data that was included in the package does not seem sufficient for our purposes.
 
 
 # Session info
