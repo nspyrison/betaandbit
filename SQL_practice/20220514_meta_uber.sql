@@ -11,7 +11,8 @@
 -- event        categorical char
 -- time_spent   int
 -- 
--- Q: for each user who signed up after 2020-01-01 what is the prop of time spent per event type?
+-- Q: for each user who signed up after 2020-01-01 what is the prop 
+--    of time spent per event type?
 --
 -- Assume: no duplications/missing. Return name, user_id, event, prop.
 
@@ -53,7 +54,7 @@ with TimePerUserEvent AS (
     GROUP BY 1, 2, 3
 ),
 TimerPerUser AS (
-    SELECT user_id, SUM(time_per_userevent) as time_per_userevent
+    SELECT user_id, SUM(time_per_userevent) as time_per_user
     FROM TimePerUserEvent
     GROUP BY 1
 )
@@ -76,7 +77,8 @@ FROM TimePerUser TU JOIN TimePerUserEvent TE USING user_id;
 -- market_id        int
 -- uber_one         bool
 --
--- Q: Among *uber_one* users, who are the top three riders in terms of *successful* ride count per market?
+-- Q: Among *uber_one* users, who are the top three riders 
+--    in terms of *successful* ride count per market?
 --
 -- A: Assume no duplications/missing. Return market_id, user_id, ride_count, rank.
 

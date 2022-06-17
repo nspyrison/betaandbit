@@ -1,0 +1,123 @@
+---
+title: "LGBM with Tidymodels"
+#subtitle: "<Option subtitle>"
+author: "Nicholas Spyrison"
+date: "13 Jun 2022"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+---
+
+```{r opts_chunk, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+if(F)
+  browseURL("https://www.r-bloggers.com/2020/08/how-to-use-lightgbm-with-tidymodels/")
+```
+
+# Gist
+
+This combines two topics I have wanted to grow for a long time now: LGBM and Tidymodels. LGBM is Light Gradient Boosting Models. Keep in mind that boosting models learn from the residuals of previous models to improve upon it. This process happens in serial, the models are not independent and thus not parallelizable. LGBM is a predecessor of gradient boosting methods and should handle missingness well.
+
+The tidymodels packages is a unified modeling and processing ecosystems in the tidyverse. It can perform GBM, but not LGBM natively yet. We are going to use the experimental github package treesnip to use LGBM with tidymodels.
+
+
+# Setup
+
+....
+```{r}
+if(F)
+  remotes::install_github("curso-r/treesnip")
+
+library(AmesHousing) ## data
+library(janitor) ## data cleaning
+library(dplyr) ## data prep
+library(ggplot2) ## visualization
+## tidymodels:
+library(rsample)
+library(recipes)
+library(parsnip)
+library(tune)
+library(dials)
+library(workflows)
+library(yardstick)
+library(treesnip)
+
+## Speed up computation with parallel processing
+library(doParallel)
+cores_less1 <- parallel::detectCores(logical = FALSE) - 1
+registerDoParallel(cores = cores_less1)
+
+## Set the random seed so we can reproduce any simulated results.
+set.seed(1234)
+## Load the housing data and clean names
+ames_data <- make_ames() %>%
+  janitor::clean_names()
+
+dim(ames_data)
+```
+
+
+# Split data
+
+Spending our data budget. 3000 obs is alright. And we'll go with a standard 80-20 split for training data.
+
+```{r}
+ames_split <- rsample::initial_split(
+  ames_data,
+  prop = 0.8,
+  strata = sale_price
+)
+```
+
+# Preprocessing recipe
+
+Let's create a recipe for the preprocessing. LGBM, catboost, and boosting in general is quite resistant to skew and correlation in the data; so we'll be light on this.
+
+```{r}
+preprocessing_recipe <-
+  recipes::recipe(sale_price ~ ., data = training(ames_split)) %>%
+  # combine low frequency factor levels
+  recipes::step_other(all_nominal(), threshold = 0.01) %>%
+  # remove no variance predictors which provide no predictive information 
+  recipes::step_nzv(all_nominal()) %>%
+  # prep the recipe so it can be used on other data
+  prep()
+```
+
+# Finding best Hyperparameters
+
+Because we used an 80-20 split in the data, 5x cross-fold validation will each test set once, essentially a good trade-off.
+
+```{r}
+ames_cv_folds <-
+  recipes::bake(preprocessing_recipe,
+                new_data = training(ames_split)) %>%
+  rsample::vfold_cv(v = 5)
+```
+
+> ... CONTINUE HERE:
+> continuing with "Create a model specification for lightgbm."
+
+
+
+
+# Session info
+
+```{r}
+## Packages used
+pkgs <- c("oddstream")
+## Package & session info
+devtools::session_info(pkgs)
+```
+
+# Sources & related content
+
+- https://www.r-bloggers.com/2020/08/how-to-use-lightgbm-with-tidymodels/
+- https://lightgbm.readthedocs.io/en/latest/R/index.html
+- https://github.com/curso-r/treesnip
