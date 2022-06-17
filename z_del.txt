@@ -1,1 +1,5 @@
+<<<<<<< HEAD
 this is a squash test!
+=======
+this is a 
+>>>>>>> ae7b965... squash test 4
